@@ -1,0 +1,168 @@
+/*
+    집계함수와 그룹바이절
+    집계함수 대상 데이터에 대해 총합, 평균, 최댓값, 최솟값 등을 구하는 함수
+    그룹바이 절 대상 데이터를 틀정그룹으로 묶는 방법
+*/
+-- COUNT 로우 수를 반환하는 집계함수
+SELECT COUNT(*)                       --  null 포함
+     , COUNT(department_id)           -- default ALL 
+     , COUNT(ALL department_id)       -- 중복 포함, null x
+     , COUNT(DISTINCT department_id)  -- 중복 제거
+     , COUNT(employee_id)             -- employees테이블의 pk  (*) 같음
+FROM employees;
+
+SELECT SUM(salary)           AS 합계
+     , MAX(salary)           AS 최대
+     , MIN(salary)           AS 최소
+     , ROUND(AVG(salary), 2) AS 평균
+     , COUNT(employee_id)    AS 직원수
+FROM employees;   --<-- 집계대상
+
+SELECT department_id
+      , SUM(salary)           AS 합계
+      , MAX(salary)           AS 최대
+      , MIN(salary)           AS 최소
+      , ROUND(AVG(salary), 2) AS 평균
+      , COUNT(employee_id)    AS 직원수
+FROM employees          -- 직원 테이블의
+WHERE department_id IS NOT NULL -- 검색 조건이 있다면 FROM 사이에 GROUP
+AND department_id IN (30, 60, 90)
+GROUP BY department_id  -- 부서 별 (그룹으로 집계)
+ORDER BY 1;
+
+-- MEMBER 회원수와 마일리지 합계, 평균을 출력하시오
+SELECT * 
+FROM member;
+
+SELECT COUNT(mem_id) AS 회원수
+     , SUM(mem_mileage) AS 마일리지합계
+     , ROUND(AVG(mem_mileage), 2) AS 마일리지평균  
+FROM member;
+
+-- 직업별 회원수와 미일리지 합계, 평균 출력(마일리지 합계 내림차순)
+SELECT mem_job
+     , COUNT(mem_id) AS 회원수
+     , SUM(mem_mileage) AS 마일리지합계
+     , ROUND(AVG(mem_mileage), 2) AS 마일리지평균  
+FROM member
+GROUP BY mem_job
+ORDER BY 마일리지합계 DESC;
+-- ROWNUM 의사컬럼 테이블에는 없지만 있는것 처럼 사용가능
+SELECT ROWNUM AS rnum
+     , mem_name
+FROM member
+WHERE ROWNUM <= 10;
+
+-- HAVING 집계 결과에 대해서 검색 조건을 추가하고 싶을 때 사용
+-- ex) 직업별 마일리지 합계가 10000 이상
+SELECT mem_job       AS 직업
+     , COUNT(mem_id) AS 회원수
+     , SUM(mem_mileage) AS 마일리지합계
+     , ROUND(AVG(mem_mileage), 2) AS 마일리지평균  
+FROM member
+GROUP BY mem_job
+HAVING SUM(mem_mileage) >= 10000 -- 집계결과에 검색조건
+ORDER BY 3 DESC;
+
+-- kor_loan_status 테이블의 loan_jan_amt(대출액)
+-- 2013년도 기간별, 지역별 총 대출잔액을 출력하시오
+SELECT SUBSTR(period, 1, 4)  AS 년도
+     , region                AS 지역
+     , SUM(loan_jan_amt)     AS 대출합
+FROM kor_loan_status
+--WHERE period LIKE '2013%';
+WHERE SUBSTR(period, 1, 4) = '2013'
+GROUP BY SUBSTR(period, 1, 4), region;
+-- 2013년 지역별, 구분별 합계
+SELECT SUBSTR(period, 1, 4)  AS 년도
+     , region                AS 지역
+     , gubun                 AS 구분
+     , SUM(loan_jan_amt)     AS 대출합
+FROM kor_loan_status
+--WHERE period LIKE '2013%';
+WHERE SUBSTR(period, 1, 4) = '2013'
+GROUP BY SUBSTR(period, 1, 4), region, gubun
+ORDER BY 2;
+-- 지역별 대출의 합계가 200000
+SELECT region              AS 지역
+     , SUM(loan_jan_amt)   AS 대출합
+FROM kor_loan_status
+GROUP BY region
+HAVING SUM(loan_jan_amt) >= 200000
+ORDER BY 2 DESC;
+
+-- 대전, 서울, 부산의
+-- 년도별 대출의 합계에서
+-- 대출의 합이 60000 넘는 결과를 출력하시오
+-- 정렬 지역 오름차순, 대출합 내림차순
+
+SELECT SUBSTR(period,1,4)  AS 년도
+     , region              AS 지역
+     , SUM(loan_jan_amt)   AS 대출합
+FROM kor_loan_status
+WHERE region IN('대전','서울','부산')
+GROUP BY SUBSTR(period,1,4), region
+HAVING SUM(loan_jan_amt) >= 600000
+ORDER BY 2, 3 DESC;
+
+-- employees 직원들의 입사년도별 직원수를 출력하시오
+-- hire_date 사용
+SELECT TO_CHAR(HIRE_DATE,'YYYY')  AS 년도
+     , COUNT(employee_id)         AS 직원수
+FROM employees
+GROUP BY TO_CHAR(HIRE_DATE,'YYYY')
+ORDER BY TO_CHAR(HIRE_DATE,'YYYY') ASC;
+
+-- 10 명이상 입사한 년도
+SELECT TO_CHAR(HIRE_DATE,'YYYY')  AS 년도
+     , COUNT(employee_id)         AS 직원수
+FROM employees
+GROUP BY TO_CHAR(HIRE_DATE,'YYYY')
+HAVING COUNT(employee_id) >= 10
+ORDER BY 1;
+
+-- customer 회원의 전체 회원수, 남자 회원수, 여자 회원수를 출력하시오
+-- 남자 여자라는 컬름은 없음
+SELECT COUNT(cust_id)  AS 전체회원수 
+    , COUNT(DECODE(cust_gender, 'M', '남자')) as 남자
+    , SUM(DECODE(cust_gender, 'M', 1,0)) as 남자2
+    , COUNT(DECODE(cust_gender, 'F', '여자')) as 여자
+    , SUM(DECODE(cust_gender, 'F', 1,0)) as 여자2
+FROM customers;
+
+-- 1. 정렬 요일 일요일 부터 (employees, hire_date)~
+-- COUNT(TO_CHAR(hire_date,'d')) AS 입사직원수 
+--select decode(to_char(hire_date,'day'
+SELECT CASE WHEN TO_CHAR(hire_date,'d') = 1 THEN '일'
+             WHEN TO_CHAR(hire_date,'d') = 2 THEN '월'
+             WHEN TO_CHAR(hire_date,'d') = 3 THEN '화'
+             WHEN TO_CHAR(hire_date,'d') = 4 THEN '수'
+             WHEN TO_CHAR(hire_date,'d') = 5 THEN '목'
+             WHEN TO_CHAR(hire_date,'d') = 6 THEN '금'
+             WHEN TO_CHAR(hire_date,'d') = 7 THEN '토'
+             ELSE '총계'
+        END AS 요일 
+        , COUNT(TO_CHAR(hire_date,'d')) AS 입사직원수 
+FROM employees
+GROUP BY ROLLUP(TO_CHAR(hire_date,'d'))
+ORDER BY TO_CHAR(hire_date,'d');
+
+-- 2. 년도별 요일의 고용인원수를 출력하시오
+-- (employees, hire_date)사용
+-- 정렬 년도 오름차순
+SELECT TO_CHAR(hire_date,'YYYY') AS YYYY
+     , SUM(DECODE(TO_CHAR(hire_date,'d'),1,1,0)) AS SUN
+     , SUM(DECODE(TO_CHAR(hire_date,'d'),2,2,0)) AS MON
+     , SUM(DECODE(TO_CHAR(hire_date,'d'),3,3,0)) AS TUE
+     , SUM(DECODE(TO_CHAR(hire_date,'d'),4,4,0)) AS WED
+     , SUM(DECODE(TO_CHAR(hire_date,'d'),5,5,0)) AS THU
+     , SUM(DECODE(TO_CHAR(hire_date,'d'),6,6,0)) AS FRI
+     , SUM(DECODE(TO_CHAR(hire_date,'d'),7,7,0)) AS SAT
+     , COUNT(TO_CHAR(hire_date,'d')) AS 년도별고용직원합계
+FROM employees
+GROUP BY TO_CHAR(hire_date,'YYYY')
+ORDER BY 1;
+
+-- 실행순서
+-- FROM – WHERE – GROUP BY – HAVING – SELECT – ORDER BY
+
