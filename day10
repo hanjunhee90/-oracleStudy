@@ -1,0 +1,288 @@
+/*
+    WITH 절 별칭으로 사용한 SELECT 문을 참조가 가능함.
+    반복되는 서브쿼리를 변수처럼 사용가능
+    통계쿼리나 튜닝할때 많이 사용
+    
+    temp라는 임시 테이블을 사용해서 장시간 걸리는 쿼리의 결과를 저장해 높고
+    저장해 놓은 데이터를 액세스하기 때문에 성능이 좋을 수 있음.
+    oracle 9 버전이상 지원.
+    [장점] 가독성이 좋음
+*/
+-- 부서별 월급 합계
+-- 직무별 월급 합계
+-- 결과 추력
+WITH a as  (SELECT employee_id
+                 , emp_name
+                 , job_id
+                 , department_id
+                 , salary
+            FROM employees
+), b as ( SELECT department_id
+               , SUM(salary) as dep_sum
+               , COUNT(department_id) as dep_cnt
+          FROM a
+          GROUP BY department_id              
+), C as ( SELECT job_id
+               , SUM(salary) as job_sum
+               , COUNT(job_id) as job_cnt
+          FROM a
+          GROUP BY job_id
+)
+SELECT a.employee_id
+     , a.emp_name
+     , a.salary
+     , b.dep_sum
+     , b.dep_cnt
+     , c.job_id
+     , c.job_sum
+     , c.job_cnt
+FROM a, b, c
+WHERE a.department_id = b.department_id
+AND a.job_id = c.job_id;
+/* 문제
+    kor_loan_status 테이블에서 '연도별' '최종월(마지막월)' 기준
+    가장 대출이 많은 '도시'와 '잔액'을 구하시오
+    -----------------------------------------------------
+    - 2011년 12월, 2013년은 11월으로 연도별 최종월이 다름.
+    - 연도별 최종월을 대상으로 대출잔액이 가장 큰 금액 추출
+    - 월별, 지역별 대출 잔액과 '연도별 가장큰 잔액'과 비교해서 같은 건을 추출
+*/
+-- 최종월
+SELECT MAX(period) as max_month
+FROM kor_loan_status
+GROUP BY SUBSTR(period, 1, 4); 
+-- 월별 지역별 잔액
+SELECT period
+     , region
+     , SUM(loan_jan_amt) as jan_sum
+from kor_loan_status
+GROUP BY period, region;
+-- 최종월의 대출이 가장 큰 금액
+SELECT b.period
+     , MAX(b.jan_sum) as max_jan_sum
+FROM (SELECT period
+           , region
+           , SUM(loan_jan_amt) as jan_sum
+      FROM kor_loan_status
+      GROUP BY period, region) b
+   , (SELECT MAX(period) as max_month
+      FROM kor_loan_status
+      GROUP BY SUBSTR(period, 1, 4)) a
+WHERE b.period = a.max_month
+GROUP BY b.period;
+
+SELECT b2.*
+FROM (SELECT period
+           , region
+           , SUM(loan_jan_amt) as jan_sum
+      FROM kor_loan_status
+      GROUP BY period, region) b2
+   , (SELECT b.period
+           , MAX(b.jan_sum) as max_jan_sum
+      FROM (SELECT period
+                 , region
+                 , SUM(loan_jan_amt) as jan_sum
+            FROM kor_loan_status
+            GROUP BY period, region) b
+   , (SELECT MAX(period) as max_month
+      FROM kor_loan_status
+      GROUP BY SUBSTR(period, 1, 4)) a
+      WHERE b.period = a.max_month
+      GROUP BY b.period) c
+WHERE b2.period = c.period
+AND b2.jan_sum = c.max_jan_amt
+ORDER BY 1;
+
+
+-- 위 내용을 with 절로
+WITH b AS (SELECT period
+                , region
+                , SUM(loan_jan_amt) as jan_sum
+           from kor_loan_status
+           GROUP BY period, region
+), c AS (SELECT b.period, MAX(b.jan_sum) as max_jan_amt
+         FROM b,
+             (SELECT MAX(period) as max_month
+              FROM kor_loan_status
+              GROUP BY SUBSTR(period, 1, 4)) a
+        WHERE b.period = a.max_month
+        GROUP BY b.period
+)
+SELECT b.*
+FROM b, c
+WHERE b.period = c.period
+AND b.jan_sum = c.max_jan_amt
+ORDER BY 1;
+
+WITH test_data AS(
+    SELECT 'abcd' as pw FROM dual
+    UNION ALL
+    SELECT 'abcd안녕' as pw FROM dual
+    UNION ALL
+    SELECT 'abcd안녕123' as pw FROM dual
+)
+SELECT *
+FROM test_data
+WHERE REGEXP_LIKE(pw, '[가-힝]');
+
+-- 고객중 카트 이력이 가장많은 고객가 가장 적은 고객의 정보를 출력하시오 (member, cart)
+SELECT mem_id
+     , mem_name
+FROM member;
+SELECT b.mem_id
+     , b.mem_name
+     , COUNT(DISTINCT(a.cart_no))
+FROM cart a, member b
+WHERE b.mem_id = a.cart_member
+GROUP BY b.mem_id, b.mem_name;
+
+WITH T1 AS (SELECT a.mem_id, a.mem_name, COUNT(DISTINCT b.cart_no) cnt
+            FROM member a, cart b
+            WHERE a.mem_id = b.cart_member
+            GROUP BY a.mem_id, a.mem_name
+), T2 AS (SELECT MAX(T1.cnt) AS max_cnt, MIN(T1.cnt) AS min_cnt
+          FROM T1
+)
+SELECT t1.mem_id, t1.mem_name, t1.cnt
+FROM t1, t2
+WHERE t1.cnt = t2.max_cnt
+OR t1.cnt = t2.min_cnt
+ORDER BY 1;
+/* 2000년도 이탈리아의 '연평균 매출액' 보다 큰 '월의 평균 매출액' 이었던
+    '년월', '매출액'을 출력하시오 (소수점 반올림)
+    sales, customers, cuntries (테이블)
+    평균 매출액은 amount_sold  <-- avg로 (합산 평균말고 그냥 평균)
+*/
+--,ROUND(AVG(amount_sold))
+/*
+    '년월', '매출액'을 출력하시오 (소수점 반올림)
+    sales, customers, countries (테이블)
+    평균 매출액은 amount_sold  <-- avg로 (합산 평균말고 그냥 평균)
+    tip. 분할정복 !
+    1) 최종적으로 조회되는 결과 항목을 정의
+    2) 필요한 테이블과 컬럼 파악
+    3) 작은 단위로 분할해서 쿼리 작성
+    4) 분할한 단위의 쿼리를 하나로 합쳐 최종 결과를 산출
+    5) 결과를 검증
+*/
+SELECT cust_id       -- 고객아이디
+     , sales_month   -- 매출액
+     , amount_sold   -- 매출금액
+FROM sales;
+
+SELECT cust_id
+     , country_id
+FROM customers;
+SELECT country_id
+     , country_name
+FROM countries;
+
+SELECT a.cust_id       
+     , a.sales_month  
+     , a.amount_sold 
+     , b.country_id
+FROM sales a
+   , customers b
+   , countries c
+WHERE a.cust_id = b.cust_id
+AND b.country_id = c.country_id
+AND a.sales_month BETWEEN '200001' AND '200012'
+AND c.country_name = 'Italy';
+
+WITH A as (
+            SELECT a.cust_id       
+                 , a.sales_month  
+                 , a.amount_sold 
+                 , b.country_id
+            FROM sales a
+               , customers b
+               , countries c
+            WHERE a.cust_id = b.cust_id
+            AND b.country_id = c.country_id
+            AND a.sales_month BETWEEN '200001' AND '200012'
+            AND c.country_name = 'Italy'
+)
+, B as (
+            SELECT ROUND(AVG(amount_sold)) AS y_avg    -- 연평균
+            FROM A
+)
+, C AS (
+            SELECT sales_month
+                 , ROUND(AVG(amount_sold)) AS m_avg    -- 월평균
+            FROM A
+            GROUP BY sales_month
+)
+SELECT c.sales_month, c.m_avg
+FROM b, c
+WHERE c.m_avg > b.y_avg
+ORDER BY 1;
+
+---------------------------------------------------------------------------
+
+WITH ya AS (
+            SELECT SUBSTR(sales_month,1,4) AS yy
+                  ,ROUND(avg(amount_sold)) AS year_avg
+            FROM sales q, (SELECT b.cust_id
+                           FROM customers b, countries c
+                           WHERE b.country_id = c.country_id
+                           AND c.country_id = '52770') w 
+            WHERE q.cust_id = w.cust_id
+            AND q.sales_month Like '2000%'
+            GROUP BY SUBSTR(sales_month,1,4)
+), ma AS (
+        SELECT a.sales_month
+             , ROUND(AVG(a.amount_sold)) AS month_avg
+        FROM sales a
+        WHERE a.sales_month Like '2000%'
+        GROUP BY a.sales_month
+        ORDER BY 1
+)
+
+SELECT ma.sales_month
+     , ma.month_avg
+FROM ma, ya
+WHERE ma.month_avg > ya.year_avg;
+
+-- 월평균 매출액
+SELECT a.sales_month
+     , ROUND(AVG(a.amount_sold)) AS month_avg
+FROM sales a
+WHERE a.sales_month Like '2000%'
+GROUP BY a.sales_month
+ORDER BY 1;
+
+select  sales_month
+      , AVG(amount_sold) a 
+from sales
+WHERE sales_month LIKE '2000%'
+GROUP BY sales_month;
+
+-- 2000년도 이탈리아 연평균 
+SELECT SUBSTR(sales_month,1,4) AS 년도
+      ,ROUND(avg(amount_sold)) AS 년평균
+FROM sales q, (SELECT b.cust_id
+               FROM customers b, countries c
+               WHERE b.country_id = c.country_id
+               AND c.country_id = '52770') w 
+WHERE q.cust_id = w.cust_id
+AND q.sales_month Like '2000%'
+GROUP BY SUBSTR(sales_month,1,4);
+
+
+-- 이탈리아 고객 아이디
+SELECT b.cust_id
+FROM customers b, countries c
+WHERE b.country_id = c.country_id
+AND c.country_id = '52770';
+
+-- 이탈리아  108.24444
+SELECT c.country_id, c.country_name
+FROM countries c
+WHERE country_id = '52770';
+
+
+select * from sales;
+SELECT *
+FROM countries;
+
+
