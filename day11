@@ -1,0 +1,216 @@
+/*
+    뷰 View 338p
+    하나 이상의 테이블을 연결해 마치 테이블인 것 처럼 사용하는 객체
+    실제 데이터는 뷰를 구서하는 테이블에 담겨 있지만 테이블 처럼 사용가능
+    사용 목적  :  1. 자주 사용하는 SQL문을 매번 작성할 필요 없이 뷰로 생성하여 사용가능
+                2. 데이터 보안 측면(원천 테이블을 감출 수 잇음)
+    뷰 특징 : (1) 단순 뷰 (테이블 1개)
+                - 그룹함수 사용불가
+                - distinct 사용불사
+                - insert/update/delete 사용가능
+             (2) 복합 뷰 (여러개 테이블)
+                - 그룹함수 사용가능
+                - distinct 사용가능
+                - insert/update/delete 불가능
+*/
+CREATE OR REPLACE VIEW emp_dep AS
+SELECT a.employee_id
+     , b.department_id
+     , b.department_name
+FROM employees a, departments b
+WHERE a.department_id = b.department_id;
+-- system 계정에서 java 계정에 뷰를 생성할 수 있는 권한부여
+GRANT CREATE VIEW TO java;
+SELECT *
+FROM EMP_DEP;
+-- java 계정에서 emp_dep view를 조회할 수 있는 권한을 study계정에게 부여 함
+GRANT SELECT ON emp_dep TO study;
+-- study 계정에서 조회
+SELECT *
+FROM java.emp_dep;
+-- view 삭제
+DROP view emp_dep;
+
+/*
+    동의어(Synonym) 354p
+    시노님은 동의어란 뜻으로 객체 각자의 고유한 이름에 대한 동의어를 만드는것
+    public synonym 모든 사용자 접근
+    private synonym 특정 사용자만 접근
+    public synonym 은 DBA 권한이 있는 사용자만 가능 (생성, 삭제)
+        목적 : 1. 보안측면 계정명(id), 테이블명과 같은 중요한 정보를 숨기기 위해 별칭을 만듬
+              2. 개발 편의성 실제 테이블의 정보가 변경되어도 별칭으로 사용했다면 코드수정 안해도됨.
+*/
+-- system 계정에서 시노님 생성 권한 부여
+GRANT CREATE SYNONYM TO member;
+-- member 계정에서 member 테이블
+-- default private synonym
+CREATE OR REPLACE SYNONYM mem FOR member; -- member 테이블을 mem 으로
+-- java 계정에서 mem 조회할 수 있는 권한 부여
+GRANT SELECT ON mem TO java;
+SELECT * 
+FROM member.mem;
+-- system 계정에서 public synonym 생성(member계정의 member 테이블)
+CREATE OR REPLACE PUBLIC SYNONYM meme2 FOR member.member;
+GRANT SELECT ON meme2 TO study;
+SELECT * 
+FROM meme2;
+-- 권한 해제
+-- REVOKE 권한 FROM 계정명
+-- public synonym 삭제는 DBA권한이 있어야함
+DROP PUBLIC SYNONYM meme2;
+
+/*
+    시퀀스 sequence 348p : 규칙에 따라 자동 순번을 반환하는 객체
+    목적 ; pk로 사용할 컬럼이 없는 경우
+    시퀀스명.CURRVAL (현재시퀀스값) 최초에는 없기 때문에 안됨,
+    시퀀스명.NEXTVAL 다음 시퀀스값
+*/
+CREATE SEQUENCE my_seq
+INCREMENT BY 1      -- 증감 숫자
+START WITH 1        -- 시작 숫자
+MINVALUE   1        -- 최소값
+MAXVALUE   10       -- 최대값
+NOCYCLE             -- 최대나 최소에 도달하면 생성중지 (cycle은 다시 돌아감)
+NOCACHE;            -- 메모리에 최대 시퀀스 값을 할당 할지말지 (cache 할당함)
+SELECT my_seq.NEXTVAL
+FROM dual;
+SELECT my_seq.CURRVAL
+FROM dual;
+
+CREATE SEQUENCE my_seq1
+INCREMENT BY  10            -- 증감 숫자
+START WITH  1000            -- 시작 숫자
+MINVALUE    1               -- 최소값
+MAXVALUE  999999999         -- 최대값 
+; 
+SELECT my_seq1.NEXTVAL
+FROM dual;
+CREATE TABLE ex11(
+        dep_seq NUMBER PRIMARY KEY
+      , dt      DATE DEFAULT SYSDATE
+);
+INSERT INTO ex11 (dep_seq) VALUES (my_seq1.NEXTVAL);
+INSERT INTO ex11 (dep_seq) VALUES ((SELECT MAX(NVL(dep_seq, 0))+10
+                                    FROM ex11));
+SELECT * FROM ex11;
+
+SELECT MAX(NVL(dep_seq, 0))+10
+FROM ex11;
+
+-- oracle 12 버전 부터 사용가능
+-- IDENTITY (테이블 생성시 사용가능)
+CREATE TABLE ex11_1(
+        seq NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY
+      , title VARCHAR2(100)
+);
+INSERT INTO ex11_1 (title) VALUES ('ha ha');
+SELECT *
+FROM ex11_1;
+CREATE TABLE ex11_2(
+        seq NUMBER GENERATED ALWAYS AS IDENTITY(
+            START WITH 100
+            INCREMENT BY 10
+            MINVALUE 10
+            MAXVALUE 100000
+        ) PRIMARY KEY
+        , title VARCHAR2(100)
+);
+INSERT INTO ex11_2(title) VALUES('하이');
+SELECT * FROM ex11_2;
+
+-- 세미조인?
+-- EXISTS 서브쿼리에서 결과가 하나라도 존재하면 Ture, 없으면 False를 반환
+-- 서브쿼리의 결과가 존재하는지 여부를 확인하는데 사용됨.
+-- 수강이력이 있는(존재하는) 학생 조회
+SELECT *
+FROM 학생 a
+WHERE EXISTS (SELECT *
+              FROM 수강내역
+              WHERE 학번 = a.학번);
+-- 존재 안하는 것 (NOT EXISTS)
+SELECT *
+FROM 학생 a
+WHERE NOT EXISTS (SELECT *
+              FROM 수강내역
+              WHERE 학번 = a.학번);
+/*
+    MERGE
+    UPDATE or DELETE 와 INSERT 를 한번에 처리할 수 있는 SQL문
+*/
+-- '과목' 테이블에 머신러닝 과목이 있으면 학점을 3으로 업데이트
+--                            없으면 INSERT('머신러닝', 학점:2 )
+SELECT *
+FROM 과목;
+MERGE INTO 과목 s   -- 대상테이블
+    USING DUAL     -- 조건테이블 (dual은 대상테이블을 조건으로 할때)
+    ON (s.과목이름 = '머신러닝')  -- matched 조건
+WHEN MATCHED THEN
+    UPDATE SET s.학점 = 3
+WHEN NOT MATCHED THEN
+    INSERT (과목번호, 과목이름, 학점)
+    VALUES ((SELECT MAX(과목번호) +1
+             FROM 과목), '머신러닝', 2);
+
+-- MEMBER, CART, PROD 활용
+-- 고객별, 상품별 (고객구매수량), (전체판매수량), (해당상품전체 판매에서의 고객 구매비율)
+--              , (고객이 구매한 해당제품 구매 합산), (전체에서 해당 제품 구매 합산)
+
+SELECT a.mem_id 
+FROM member a;
+
+SELECT c.prod_name 
+     , b.cart_prod
+     , SUM(b.cart_qty)
+FROM cart b, prod c
+GROUP BY ROLLUP(b.cart_prod);
+SELECT  b.cart_prod
+     , c.prod_name
+     , c.prod_sale
+FROM cart b, prod c
+WHERE b.cart_prod = c.prod_id
+GROUP BY  c.prod_name,ROLLUP(b.cart_prod);
+
+select cart_prod 
+    , prod_name
+    , SUM(DISTINCT(cart_qty))
+from prod, cart
+group by ROLLUP(SUM(DISTINCT(cart_qty));
+select cart_prod 
+    , prod_name
+    , SUM(DISTINCT(cart_qty))
+from prod, cart
+group by ROLLUP(prod_name,SUM(DISTINCT(cart_qty)));
+
+WITH A AS (
+            SELECT a.mem_id
+                 , b.cart_prod
+                 , b.cart_qty
+                 , c.prod_name
+                 , c.prod_sale
+            FROM member a, cart b, prod c
+            WHERE a.mem_id = cart_member
+            AND b.cart_prod = c.prod_id
+), B AS (   
+            SELECT  a.mem_id,
+                    a.prod_name,
+                    SUM(a.cart_qty) AS 고객구매수량,
+                    SUM(a.cart_qty * a.prod_sale) AS 고객구매합산
+            FROM a 
+            GROUP BY a.mem_id, a.prod_name
+), C AS (
+            SELECT a.prod_name,
+                   SUM(a.cart_qty * a.prod_sale) AS 전체판매수량
+            FROM a
+            GROUP BY a.prod_name
+)
+select b.mem_id
+    , b.prod_name
+    , b.고객구매수량
+    , b.고객구매합산
+    , c.전체판매수량
+    , COALESCE(b.고객구매합산 / c.전체판매수량, 0)*100 AS 고객구매비율
+from b,c
+WHERE b.prod_name = c.prod_name
+ORDER BY b.mem_id, b.prod_name;
+
+ORDER BY b.mem_id, b.prod_name;
